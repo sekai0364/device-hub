@@ -49,8 +49,12 @@ jobs:
           CARGO_PROFILE_RELEASE_LTO: 'false'
           CARGO_PROFILE_RELEASE_CODEGEN_UNITS: '16'
         run: cargo build --release --locked -p device-hub
+      - name: Stage Windows app distribution
+        if: inputs.device_hub_only == true
+        run: ./scripts/package-windows.ps1 -AppOnly
       - uses: actions/upload-artifact@v4
         if: inputs.device_hub_only == true
         with:
           name: device-hub-windows-app-x64
-          path: target/release/device-hub.exe
+          path: dist/
+          if-no-files-found: error
