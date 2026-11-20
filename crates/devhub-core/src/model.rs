@@ -74,6 +74,8 @@ pub enum DriverKind {
     Lamzu,
     /// 未割り当て (検出だけできる)。
     Unsupported,
+    /// Logicool LIGHTSPEED / USB HID++.
+    Logitech,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
@@ -1273,8 +1275,7 @@ pub enum Change {
 impl Change {
     /// 後続の変更だけを実行しても、先行変更の設定がすべて反映されるか。
     pub fn is_superseded_by(&self, next: &Change) -> bool {
-        self.same_target(next)
-            && !matches!((self, next), (Self::PeqAll { .. }, Self::Peq { .. }))
+        self.same_target(next) && !matches!((self, next), (Self::PeqAll { .. }, Self::Peq { .. }))
     }
 
     /// 同じ対象への変更か。EQ の一括変更と個別変更には対象の重なりがある。

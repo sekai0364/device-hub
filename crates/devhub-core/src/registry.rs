@@ -58,6 +58,10 @@ const fn mf(
 /// `PIDWired` / `PIDWireless` / `PIDWireless4K8K` から。usage_page/usage は
 /// HTS Plus Pro 実機 (0xFF02 / 0x02) と同じと仮定 — **他機種は実機で要確認**。
 pub const KNOWN: &[KnownDevice] = &[
+    logitech(0xC547, "PRO X SUPERLIGHT", Transport::Wireless24G, false),
+    logitech(0xC094, "PRO X SUPERLIGHT", Transport::Wired, false),
+    logitech(0xC539, "PRO Wireless", Transport::Wireless24G, false),
+    logitech(0xC088, "PRO Wireless", Transport::Wired, false),
     // ---------------------------------------------------------------- キーボード
     KnownDevice {
         vid: 0x1CA6,
@@ -266,6 +270,27 @@ pub const KNOWN: &[KnownDevice] = &[
         verified: false,
     },
 ];
+
+const fn logitech(
+    pid: u16,
+    name: &'static str,
+    transport: Transport,
+    verified: bool,
+) -> KnownDevice {
+    KnownDevice {
+        vid: 0x046D,
+        pid,
+        usage_page: Some(0xFF00),
+        usage: Some(2),
+        kind: DeviceKind::Mouse,
+        vendor: "Logicool",
+        model: name,
+        name,
+        transport,
+        driver: DriverKind::Logitech,
+        verified,
+    }
+}
 
 /// 列挙結果 (VID/PID/usage) に合う既知デバイス。`0xFFFF` のプレースホルダは一致しない。
 pub fn match_device(
