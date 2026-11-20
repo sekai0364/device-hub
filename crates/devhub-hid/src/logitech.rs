@@ -13,6 +13,7 @@ const RATE: &str = "logitech_report_rate";
 const HOST: i64 = 2;
 const ONBOARD: i64 = 1;
 const HOST_REQUIRED: &str = "変更するにはプロファイルモードをホストに切り替えてください";
+const RESPONSE_TIMEOUT: &str = "HID++ 応答タイムアウト";
 
 struct Link {
     channel: Channel,
@@ -32,14 +33,16 @@ impl Link {
         let deadline = Instant::now() + Duration::from_millis(1000);
         while let Some(remaining) = deadline.checked_duration_since(Instant::now()) {
             let frame = match self.channel.recv(remaining.as_millis().max(1) as i32) {
-                Err(HubError::Protocol(_)) => return Err(HubError::Disconnected),
+                Err(HubError::Protocol(_)) => break,
                 other => other?,
             };
             if let Some(payload) = reply(&frame, self.slot, feature, address)? {
                 return Ok(payload);
             }
         }
-        Err(HubError::Disconnected)
+        // A sleeping wireless mouse can stop responding while its receiver is
+        // still connected. Reuse the HID handle when the mouse wakes.
+        Err(HubError::Protocol(RESPONSE_TIMEOUT.into()))
     }
 
     fn feature(&mut self, id: u16) -> HubResult<u8> {
@@ -266,6 +269,11 @@ impl DeviceDriver for Logitech {
                 return Err(HubError::Invalid("HID++ profile mode".into()));
             };
             link.call(self.mode, 1, &[mode as u8])?;
+            if link.call(self.mode, 2, &[])?[0] != mode as u8 {
+                return Err(HubError::Protocol(
+                    "HID++ プロファイルモードが反映されませんでした".into(),
+                ));
+            }
             drop(link);
             if let Some(watcher) = &self.watcher {
                 watcher(HubEvent::StateChanged(self.info.id.clone()));
@@ -281,6 +289,11 @@ impl DeviceDriver for Logitech {
             {
                 let [hi, lo] = (*dpi as u16).to_be_bytes();
                 link.call(self.dpi, 3, &[0, hi, lo])?;
+                if link.call(self.dpi, 2, &[0])?[1..3] != [hi, lo] {
+                    return Err(HubError::Protocol(
+                        "HID++ DPI が反映されませんでした".into(),
+                    ));
+                }
             }
             (RATE, SettingValue::Choice(hz)) => {
                 let ms = self
@@ -290,6 +303,11 @@ impl DeviceDriver for Logitech {
                     .find(|ms| 1000 / i64::from(*ms) == *hz)
                     .ok_or_else(|| HubError::Invalid(format!("{hz} Hz")))?;
                 link.call(self.rate, 2, &[ms])?;
+                if link.call(self.rate, 1, &[])?[0] != ms {
+                    return Err(HubError::Protocol(
+                        "HID++ ポーリングレートが反映されませんでした".into(),
+                    ));
+                }
             }
             _ => return Err(HubError::Invalid(id.clone())),
         }
