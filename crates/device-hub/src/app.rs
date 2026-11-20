@@ -575,10 +575,9 @@ impl Shell {
                             }
                         }
                         // 5 秒計測の終了処理 — 結果を確定してカーソル固定を解除。
-                        if let Some((_, id, vid, pid)) = this
-                            .poll_trial
-                            .take_if(|(end, ..)| std::time::Instant::now() >= *end)
-                        {
+                        if let Some((_, id, vid, pid)) = this.poll_trial.take_if(|(end, ..)| {
+                            std::time::Instant::now() >= *end
+                        }) {
                             crate::cursor::unclip();
                             let stats = crate::rawinput::finish_trial(vid, pid).unwrap_or_default();
                             this.poll_meas_result = Some((id, stats));
@@ -2014,9 +2013,9 @@ impl Shell {
     fn mem_tick(&mut self) {
         use windows::Win32::Foundation::HWND;
         use windows::Win32::System::Threading::{
-            GetCurrentProcess, ProcessMemoryPriority, SetProcessInformation,
-            SetProcessWorkingSetSize, MEMORY_PRIORITY_BELOW_NORMAL, MEMORY_PRIORITY_INFORMATION,
-            MEMORY_PRIORITY_NORMAL,
+            GetCurrentProcess, SetProcessInformation, SetProcessWorkingSetSize,
+            MEMORY_PRIORITY_BELOW_NORMAL, MEMORY_PRIORITY_INFORMATION, MEMORY_PRIORITY_NORMAL,
+            ProcessMemoryPriority,
         };
         use windows::Win32::UI::WindowsAndMessaging::IsIconic;
         if self.hwnd == 0 {
@@ -2068,13 +2067,9 @@ impl Shell {
     fn mem_tick(&mut self) {}
 
     fn usb_resolve_target(&mut self) -> bool {
-        if self.prefs.usb_pick.is_empty() {
-            return true;
-        }
+        if self.prefs.usb_pick.is_empty() { return true; }
         let Some(d) = devhub_polling::discover::resolve(&self.prefs.usb_pick, 0, 0) else {
-            self.usb_scan_msg = Some(
-                "対象が見つかりません。接続を確認して更新し、製品を選び直してください。".into(),
-            );
+            self.usb_scan_msg = Some("対象が見つかりません。接続を確認して更新し、製品を選び直してください。".into());
             return false;
         };
         self.usb_target.hub = d.hub;
@@ -2091,9 +2086,7 @@ impl Shell {
         };
         self.usb_snap = None;
         self.usb_result = None;
-        if !self.usb_resolve_target() {
-            return;
-        }
+        if !self.usb_resolve_target() { return; }
         self.usb_cap = Some((id, devhub_polling::Capture::start(self.usb_target)));
     }
 
@@ -2125,7 +2118,10 @@ impl Shell {
                 Ok((hub, dev, result)) => {
                     self.usb_scan = None;
                     self.usb_scan_msg = Some(match result {
-                        Ok(eps) if hub == self.usb_target.hub && dev == self.usb_target.device => {
+                        Ok(eps)
+                            if hub == self.usb_target.hub
+                                && dev == self.usb_target.device =>
+                        {
                             match eps.first() {
                                 Some((ep, n)) => {
                                     self.usb_target.endpoint = *ep;
@@ -2133,7 +2129,9 @@ impl Shell {
                                     self.prefs.save();
                                     format!("EP 0x{ep:02X} を検出 ({n} 転送) — 計測を開始できます")
                                 }
-                                None => "転送なし — 対象デバイスを操作しながら再試行".to_string(),
+                                None => {
+                                    "転送なし — 対象デバイスを操作しながら再試行".to_string()
+                                }
                             }
                         }
                         Ok(_) => "対象が変わったため検出結果を破棄しました".to_string(),

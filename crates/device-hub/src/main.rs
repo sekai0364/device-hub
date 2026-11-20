@@ -24,8 +24,8 @@ use gpui_kit::*;
 fn main() {
     let minimized = cfg!(windows) && std::env::args_os().any(|arg| arg == "--minimized");
     device_hub::rawinput::start(); // 実測ポーリングレート計測 (Raw Input)
-                                   // USB 計測ワーカーの診断ログ — 未設定なら %TEMP% に既定で出す
-                                   // (切断の OS コード採取用。ワーカー遷移のみで容量は微小)。
+    // USB 計測ワーカーの診断ログ — 未設定なら %TEMP% に既定で出す
+    // (切断の OS コード採取用。ワーカー遷移のみで容量は微小)。
     if std::env::var_os("DEVHUB_USB_LOG").is_none() {
         if let Some(tmp) = std::env::var_os("TEMP") {
             let mut p = std::path::PathBuf::from(tmp);
