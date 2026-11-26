@@ -12,6 +12,7 @@ const DPI: &str = "logitech_dpi";
 const RATE: &str = "logitech_report_rate";
 const HOST: i64 = 2;
 const ONBOARD: i64 = 1;
+const STARTUP_INTERVAL_MS: u8 = 4; // 250 Hz
 const HOST_REQUIRED: &str = "変更するにはプロファイルモードをホストに切り替えてください";
 const RESPONSE_TIMEOUT: &str = "HID++ 応答タイムアウト";
 
@@ -43,6 +44,26 @@ impl Link {
         // A sleeping wireless mouse can stop responding while its receiver is
         // still connected. Reuse the HID handle when the mouse wakes.
         Err(HubError::Protocol(RESPONSE_TIMEOUT.into()))
+    }
+
+    fn set_mode(&mut self, feature: u8, mode: u8) -> HubResult<()> {
+        self.call(feature, 1, &[mode])?;
+        if self.call(feature, 2, &[])?[0] != mode {
+            return Err(HubError::Protocol(
+                "HID++ プロファイルモードが反映されませんでした".into(),
+            ));
+        }
+        Ok(())
+    }
+
+    fn set_report_interval(&mut self, feature: u8, interval: u8) -> HubResult<()> {
+        self.call(feature, 2, &[interval])?;
+        if self.call(feature, 1, &[])?[0] != interval {
+            return Err(HubError::Protocol(
+                "HID++ ポーリングレートが反映されませんでした".into(),
+            ));
+        }
+        Ok(())
     }
 
     fn feature(&mut self, id: u16) -> HubResult<u8> {
@@ -155,13 +176,22 @@ pub(super) fn open(
     let dpi_range = DpiRange::parse(link.call(dpi, 1, &[0])?)?;
     let rate = link.required_feature(0x8060)?;
     let mask = link.call(rate, 0, &[])?[0];
-    let rate_options = (1..=8).filter(|ms| mask & (1 << (ms - 1)) != 0).collect();
+    let rate_options: Vec<u8> = (1..=8).filter(|ms| mask & (1 << (ms - 1)) != 0).collect();
     let unified = link.feature(0x1004)?;
     let battery = if unified == 0 {
         link.feature(0x1001)?
     } else {
         unified
     };
+    // Apply the startup settings once per connection, before the first UI read.
+    if rate_options.contains(&STARTUP_INTERVAL_MS) {
+        if link.call(mode, 2, &[])?[0] != HOST as u8 {
+            link.set_mode(mode, HOST as u8)?;
+        }
+        if link.call(rate, 1, &[])?[0] != STARTUP_INTERVAL_MS {
+            link.set_report_interval(rate, STARTUP_INTERVAL_MS)?;
+        }
+    }
     Ok(Logitech {
         info,
         link: Mutex::new(link),
@@ -268,12 +298,7 @@ impl DeviceDriver for Logitech {
             let SettingValue::Choice(mode @ (ONBOARD | HOST)) = *value else {
                 return Err(HubError::Invalid("HID++ profile mode".into()));
             };
-            link.call(self.mode, 1, &[mode as u8])?;
-            if link.call(self.mode, 2, &[])?[0] != mode as u8 {
-                return Err(HubError::Protocol(
-                    "HID++ プロファイルモードが反映されませんでした".into(),
-                ));
-            }
+            link.set_mode(self.mode, mode as u8)?;
             drop(link);
             if let Some(watcher) = &self.watcher {
                 watcher(HubEvent::StateChanged(self.info.id.clone()));
@@ -302,12 +327,7 @@ impl DeviceDriver for Logitech {
                     .copied()
                     .find(|ms| 1000 / i64::from(*ms) == *hz)
                     .ok_or_else(|| HubError::Invalid(format!("{hz} Hz")))?;
-                link.call(self.rate, 2, &[ms])?;
-                if link.call(self.rate, 1, &[])?[0] != ms {
-                    return Err(HubError::Protocol(
-                        "HID++ ポーリングレートが反映されませんでした".into(),
-                    ));
-                }
+                link.set_report_interval(self.rate, ms)?;
             }
             _ => return Err(HubError::Invalid(id.clone())),
         }
